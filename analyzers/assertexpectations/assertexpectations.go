@@ -90,15 +90,6 @@ func (r runner) run(pass *analysis.Pass) (any, error) {
 					continue
 				}
 
-				for _, instr := range *alloc.Referrers() {
-					val, ok := instr.(ssa.Value)
-					if ok {
-						debugf("%s: %T %v\n", val.Name(), instr, instr)
-					} else {
-						debugf("%T %v\n", instr, instr)
-					}
-				}
-
 				r.handleReferrers(pass, alloc, f.Recover)
 			}
 		}
