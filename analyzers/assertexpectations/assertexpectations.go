@@ -66,10 +66,21 @@ const (
 func handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) continuation {
 	switch ref := instr.(type) {
 	case *ssa.Store:
-		// It's fine to store something in our allocated memory before we set up the
-		// AssertExpectations call. This isn't something the user specifies, rather something Go
-		// does on their behalf.
-		return keepGoing
+		if ref.Addr != alloc {
+			return keepGoing
+		}
+
+		_, ok := ref.Val.(*ssa.Alloc)
+		if ok {
+			// If the RHS of the store operation is an allocation, that means it's a struct literal
+			// and we should analyze it.
+			return keepGoing
+		} else {
+			// If it's not an allocation it could be something like a function call. If we're
+			// storing the result of a function call, we'll analyze that function elsewhere so we
+			// can assume it has set up AssertExpectations correctly.
+			return succeed
+		}
 	case *ssa.MakeClosure:
 		isCleanup := false
 		for _, ref := range *ref.Referrers() {
