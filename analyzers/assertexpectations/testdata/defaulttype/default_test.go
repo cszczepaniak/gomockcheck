@@ -231,3 +231,14 @@ func Test_NormalCallToAssertExpectations(t *testing.T) {
 	a := &MyMock{} // want "mocks must have an AssertExpectations registered in a defer or t.Cleanup"
 	a.AssertExpectations(t)
 }
+
+func Benchmark_ItShouldWorkHereToo(b *testing.B) {
+	a := &MyMock{} // want "mocks must have an AssertExpectations registered in a defer or t.Cleanup"
+	a.On("")
+}
+
+func Benchmark_ItShouldWorkHereToo_NoProblem(b *testing.B) {
+	a := &MyMock{}
+	b.Cleanup(func() { a.AssertExpectations(b) })
+	a.On("")
+}
