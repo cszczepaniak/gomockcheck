@@ -153,7 +153,8 @@ func (r runner) handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) continua
 		_, ok := ref.Val.(*ssa.Alloc)
 		if ok {
 			// If the RHS of the store operation is an allocation, that means it's a struct literal
-			// and we should analyze it.
+			// and we should analyze it. Let's include the position of the value because there are
+			// some cases that the position of the Addr here points to an unintuitive location.
 			return keepGoing{pos: ref.Val.Pos()}
 		} else {
 			// If it's not an allocation it could be something like a function call. If we're
