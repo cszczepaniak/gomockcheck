@@ -5,6 +5,7 @@ import (
 	"go/token"
 	"go/types"
 	"slices"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/buildssa"
@@ -40,6 +41,9 @@ func setDebug(val bool) {
 
 func debugf(s string, args ...any) {
 	if debug {
+		if !strings.HasSuffix(s, "\n") {
+			s += "\n"
+		}
 		fmt.Printf(s, args...)
 	}
 }
@@ -125,6 +129,7 @@ func (r runner) handleReferrers(pass *analysis.Pass, alloc *ssa.Alloc, skipBlock
 				pos,
 				"mocks must have an AssertExpectations registered in a defer or t.Cleanup",
 			)
+			return
 		case succeed:
 			return
 		}
@@ -166,6 +171,8 @@ func (r runner) handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) continua
 			return succeed{}
 		}
 	case *ssa.MakeClosure:
+		// This is the case that we're referring to the mock in a closure. We'll check to see if this is
+		// a closure passed into a t.Cleanup, and if that closure calls AssertExpectations.
 		isCleanup := false
 		for _, ref := range *ref.Referrers() {
 			isCleanup = isTCleanup(ref)

@@ -79,6 +79,25 @@ func Test_TCleanup_OnField(t *testing.T) {
 	a.On("Foo").Return().Once()
 }
 
+func Test_TCleanup_MoreThingsInTheCleanup(t *testing.T) {
+	a := &MyMock{}
+	t.Cleanup(func() {
+		// This would be weird to do, but I guess we accept it.
+		a.On("Hey")
+
+		a.AssertExpectations(t)
+	})
+	a.On("Foo").Return().Once()
+}
+
+func Test_TCleanup_WithoutAssertExpectations(t *testing.T) {
+	a := &MyMock{} // want "mocks must have an AssertExpectations registered in a defer or t.Cleanup"
+	t.Cleanup(func() {
+		a.On("Hey")
+	})
+	a.On("Foo").Return().Once()
+}
+
 func Test_TCleanup_AfterOtherUsage(t *testing.T) {
 	a := &MyMock{} // want "mocks must have an AssertExpectations registered in a defer or t.Cleanup"
 	a.On("Foo").Return().Once()
