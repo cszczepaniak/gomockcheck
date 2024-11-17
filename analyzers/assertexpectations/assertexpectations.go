@@ -205,11 +205,26 @@ func isTCleanup(val ssa.Instruction) bool {
 		return false
 	}
 
-	if len(call.Call.Args) != 2 || call.Call.IsInvoke() {
+	var name string
+	var sig *types.Signature
+	if call.Call.IsInvoke() {
+		sig = call.Call.Method.Signature()
+		name = call.Call.Method.Name()
+	} else {
+		sig = call.Call.Value.Type().(*types.Signature)
+		name = call.Call.Value.Name()
+	}
+
+	if name != "Cleanup" || sig.Recv() == nil || sig.Params().Len() != 1 {
 		return false
 	}
 
-	return isNamedPointer(call.Call.Args[0].Type(), "testing", "common")
+	paramTyp, ok := sig.Params().At(0).Type().(*types.Signature)
+	if !ok {
+		return false
+	}
+
+	return paramTyp.Params().Len() == 0 && paramTyp.Results().Len() == 0
 }
 
 func isAssertExpectations(call ssa.CallCommon) bool {
