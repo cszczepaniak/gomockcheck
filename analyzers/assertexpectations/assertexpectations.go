@@ -4,17 +4,30 @@ import (
 	"fmt"
 	"go/token"
 	"go/types"
+	"slices"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/buildssa"
 	"golang.org/x/tools/go/ssa"
 )
 
-func New() *analysis.Analyzer {
+type MockType struct {
+	Pkg  string
+	Name string
+}
+
+func New(typs ...MockType) *analysis.Analyzer {
+	r := runner{
+		types: slices.Concat([]MockType{{
+			Pkg:  "github.com/stretchr/testify/mock",
+			Name: "Mock",
+		}}, typs),
+	}
+
 	return &analysis.Analyzer{
 		Name:     "assertexpectations",
 		Doc:      "Ensure that AssertExpectations is called on mock objects",
-		Run:      run,
+		Run:      r.run,
 		Requires: []*analysis.Analyzer{buildssa.Analyzer},
 	}
 }
@@ -31,7 +44,31 @@ func debugf(s string, args ...any) {
 	}
 }
 
-func run(pass *analysis.Pass) (any, error) {
+type runner struct {
+	types []MockType
+}
+
+func (r runner) isMockObjName(obj types.Object) bool {
+	for _, typ := range r.types {
+		if obj.Name() == typ.Name {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (r runner) isMockObj(obj types.Object) bool {
+	for _, typ := range r.types {
+		if obj.Pkg().Path() == typ.Pkg && obj.Name() == typ.Name {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (r runner) run(pass *analysis.Pass) (any, error) {
 	pssa := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA)
 	for _, f := range pssa.SrcFuncs {
 		for _, b := range f.Blocks {
@@ -45,11 +82,20 @@ func run(pass *analysis.Pass) (any, error) {
 					continue
 				}
 
-				if !hasEmbeddedMockType(alloc.Type()) {
+				if !r.hasEmbeddedMockType(alloc.Type()) {
 					continue
 				}
 
-				handleReferrers(pass, alloc, f.Recover)
+				for _, instr := range *alloc.Referrers() {
+					val, ok := instr.(ssa.Value)
+					if ok {
+						debugf("%s: %T %v\n", val.Name(), instr, instr)
+					} else {
+						debugf("%T %v\n", instr, instr)
+					}
+				}
+
+				r.handleReferrers(pass, alloc, f.Recover)
 			}
 		}
 	}
@@ -57,7 +103,7 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-func handleReferrers(pass *analysis.Pass, alloc *ssa.Alloc, skipBlock *ssa.BasicBlock) {
+func (r runner) handleReferrers(pass *analysis.Pass, alloc *ssa.Alloc, skipBlock *ssa.BasicBlock) {
 	var pos token.Pos
 	for _, ref := range *alloc.Referrers() {
 		// It's possible that an alloc from one block will refer to the recover block. We don't want
@@ -65,7 +111,7 @@ func handleReferrers(pass *analysis.Pass, alloc *ssa.Alloc, skipBlock *ssa.Basic
 		if ref.Block() == skipBlock {
 			continue
 		}
-		continuation, newPos := handleReferrer(alloc, ref)
+		continuation, newPos := r.handleReferrer(alloc, ref)
 		if pos == 0 {
 			pos = newPos
 		}
@@ -94,7 +140,7 @@ const (
 	succeed
 )
 
-func handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) (continuation, token.Pos) {
+func (r runner) handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) (continuation, token.Pos) {
 	switch ref := instr.(type) {
 	case *ssa.Store:
 		if ref.Addr != alloc {
@@ -142,7 +188,7 @@ func handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) (continuation, toke
 			}
 
 			c := resultantCall(val)
-			if c != nil && isAssertExpectations(c.Call) {
+			if c != nil && r.isAssertExpectations(c.Call) {
 				foundAssertExpectations = true
 				break
 			}
@@ -155,7 +201,7 @@ func handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) (continuation, toke
 
 	case ssa.Value:
 		deferredCall, ok := deferredCall(ref)
-		if !ok || !isAssertExpectations(deferredCall) {
+		if !ok || !r.isAssertExpectations(deferredCall) {
 			return report, 0
 		}
 
@@ -202,12 +248,12 @@ func resultantCall(val ssa.Value) *ssa.Call {
 	return nil
 }
 
-func hasEmbeddedMockType(typ types.Type) bool {
+func (r runner) hasEmbeddedMockType(typ types.Type) bool {
 	switch typ := typ.(type) {
 	case *types.Pointer:
-		return hasEmbeddedMockType(typ.Elem())
+		return r.hasEmbeddedMockType(typ.Elem())
 	case *types.Named:
-		return hasEmbeddedMockType(typ.Underlying())
+		return r.hasEmbeddedMockType(typ.Underlying())
 	case *types.Struct:
 		for i := range typ.NumFields() {
 			f := typ.Field(i)
@@ -215,7 +261,7 @@ func hasEmbeddedMockType(typ types.Type) bool {
 				continue
 			}
 
-			if f.Name() != "Mock" {
+			if !r.isMockObjName(f) {
 				continue
 			}
 
@@ -224,7 +270,7 @@ func hasEmbeddedMockType(typ types.Type) bool {
 				continue
 			}
 
-			if named.Obj().Pkg().Path() == "github.com/stretchr/testify/mock" && named.Obj().Name() == "Mock" {
+			if r.isMockObj(named.Obj()) {
 				return true
 			}
 		}
@@ -263,7 +309,7 @@ func isTCleanup(val ssa.Instruction) bool {
 	return paramTyp.Params().Len() == 0 && paramTyp.Results().Len() == 0
 }
 
-func isAssertExpectations(call ssa.CallCommon) bool {
+func (r runner) isAssertExpectations(call ssa.CallCommon) bool {
 	if len(call.Args) < 1 {
 		return false
 	}
@@ -272,11 +318,7 @@ func isAssertExpectations(call ssa.CallCommon) bool {
 		return false
 	}
 
-	return isNamedPointer(call.Args[0].Type(), "github.com/stretchr/testify/mock", "Mock")
-}
-
-func isNamedPointer(typ types.Type, pkg, name string) bool {
-	ptr, ok := typ.(*types.Pointer)
+	ptr, ok := call.Args[0].Type().(*types.Pointer)
 	if !ok {
 		return false
 	}
@@ -286,5 +328,5 @@ func isNamedPointer(typ types.Type, pkg, name string) bool {
 		return false
 	}
 
-	return named.Obj().Pkg().Path() == pkg && named.Obj().Name() == name
+	return r.isMockObj(named.Obj())
 }
