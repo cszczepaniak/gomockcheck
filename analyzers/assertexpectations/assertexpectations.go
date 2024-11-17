@@ -181,10 +181,14 @@ func (r runner) handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) continua
 			}
 		}
 
+		// If it's not a cleanup function, we should report because we're using the mock before setting up
+		// the defer or cleanup.
 		if !isCleanup {
 			return report{}
 		}
 
+		// We're closing over the mock, so it'll be one of the free variables in the closure. We'll find it
+		// and then look through what refers to it to see if we end up calling AssertExpectations.
 		var freeVar *ssa.FreeVar
 		closure := ref.Fn.(*ssa.Function)
 		for i, b := range ref.Bindings {
@@ -194,26 +198,25 @@ func (r runner) handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) continua
 			}
 		}
 
-		foundAssertExpectations := false
 		for _, ref := range *freeVar.Referrers() {
 			val, ok := ref.(ssa.Value)
 			if !ok {
 				continue
 			}
 
+			// Currently we only enforce that there's an AssertExpectations call somewhere in the cleanup
+			// function, but we could maybe also additionally force it to be the first call.
 			c := resultantCall(val)
 			if c != nil && r.isAssertExpectations(c.Call) {
-				foundAssertExpectations = true
-				break
+				return succeed{}
 			}
 		}
 
-		if !foundAssertExpectations {
-			return report{}
-		}
-		return succeed{}
+		return report{}
 
 	case ssa.Value:
+		// Check to see if this value is referred to in a defer statement, which we allow. The defer
+		// must be in a top-level test function.
 		deferredCall, ok := deferredCall(ref)
 		if !ok || !r.isAssertExpectations(deferredCall) {
 			return report{}
