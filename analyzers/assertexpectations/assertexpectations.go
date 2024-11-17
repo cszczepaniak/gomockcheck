@@ -27,7 +27,7 @@ func New(typs ...MockType) *analysis.Analyzer {
 
 	return &analysis.Analyzer{
 		Name:     "assertexpectations",
-		Doc:      "Ensure that AssertExpectations is called on mock objects",
+		Doc:      "Ensure that AssertExpectations is called on mock objects before they're used",
 		Run:      r.run,
 		Requires: []*analysis.Analyzer{buildssa.Analyzer},
 	}
@@ -75,6 +75,7 @@ func (r runner) isMockObj(obj types.Object) bool {
 func (r runner) run(pass *analysis.Pass) (any, error) {
 	pssa := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA)
 	for _, f := range pssa.SrcFuncs {
+		setDebug(f.Name() == "Test_Defer_WithClosure")
 		for _, b := range f.Blocks {
 			if b == f.Recover {
 				continue
@@ -163,11 +164,12 @@ func (r runner) handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) continua
 			return succeed{}
 		}
 	case *ssa.MakeClosure:
-		// This is the case that we're referring to the mock in a closure. We'll check to see if this is
-		// a closure passed into a t.Cleanup, and if that closure calls AssertExpectations.
+		// This is the case that we're referring to the mock in a closure. We'll check to see if
+		// this is a closure passed into a t.Cleanup or a closure in a defer, and if that closure
+		// calls AssertExpectations.
 		isCleanup := false
 		for _, ref := range *ref.Referrers() {
-			isCleanup = isTCleanup(ref)
+			isCleanup = isTCleanupOrDefer(ref)
 			if isCleanup {
 				break
 			}
@@ -290,11 +292,17 @@ func (r runner) hasEmbeddedMockType(typ types.Type) bool {
 	}
 }
 
-func isTCleanup(val ssa.Instruction) bool {
-	call, ok := val.(*ssa.Call)
-	if !ok {
+func isTCleanupOrDefer(val ssa.Instruction) bool {
+	switch val.(type) {
+	case *ssa.Defer:
+		return true
+	case *ssa.Call:
+	// Handled below.
+	default:
 		return false
 	}
+
+	call := val.(*ssa.Call)
 
 	var name string
 	var sig *types.Signature

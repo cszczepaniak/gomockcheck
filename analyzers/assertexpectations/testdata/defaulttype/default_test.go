@@ -67,6 +67,53 @@ func Test_DeferAssert_AfterOtherUsage(t *testing.T) {
 	defer a.AssertExpectations(t)
 }
 
+func Test_Defer_WithClosure(t *testing.T) {
+	a := &MyMock{}
+
+	defer func() {
+		a.AssertExpectations(t)
+	}()
+
+	a.On("Abc")
+}
+
+func Test_Defer_WithClosure_TwoMocks(t *testing.T) {
+	a := &MyMock{}
+	b := &MyMock{}
+
+	defer func() {
+		a.AssertExpectations(t)
+		b.AssertExpectations(t)
+	}()
+
+	a.On("Abc")
+	b.On("Abc")
+}
+
+func Test_Defer_WithClosure_TwoMocks_OnlyEffectiveForOne(t *testing.T) {
+	a := &MyMock{}
+	b := &MyMock{} // want "mocks must have an AssertExpectations registered in a defer or t.Cleanup"
+
+	b.On("")
+
+	defer func() {
+		a.AssertExpectations(t)
+		b.AssertExpectations(t)
+	}()
+
+	a.On("Abc")
+	b.On("Abc")
+}
+func Test_Defer_WithClosure_ButWrongCalls(t *testing.T) {
+	a := &MyMock{} // want "mocks must have an AssertExpectations registered in a defer or t.Cleanup"
+
+	defer func() {
+		a.AssertCalled(t, "")
+	}()
+
+	a.On("Abc")
+}
+
 func Test_TCleanup(t *testing.T) {
 	a := &MyMock{}
 	t.Cleanup(func() { a.AssertExpectations(t) })
@@ -102,6 +149,64 @@ func Test_TCleanup_AfterOtherUsage(t *testing.T) {
 	a := &MyMock{} // want "mocks must have an AssertExpectations registered in a defer or t.Cleanup"
 	a.On("Foo").Return().Once()
 	t.Cleanup(func() { a.AssertExpectations(t) })
+}
+
+func Test_TCleanup_DeclareSeparately(t *testing.T) {
+	a := &MyMock{}
+
+	fn := func() {
+		a.AssertExpectations(t)
+	}
+
+	t.Cleanup(fn)
+
+	a.On("Abc")
+}
+
+func Test_TCleanup_DeclareSeparately_WithAnotherMockInBetweenThatFails(t *testing.T) {
+	a := &MyMock{}
+
+	fn := func() {
+		a.AssertExpectations(t)
+	}
+
+	b := &MyMock{} // want "mocks must have an AssertExpectations registered in a defer or t.Cleanup"
+	b.On("Def")
+
+	t.Cleanup(fn)
+
+	a.On("Abc")
+}
+
+func Test_TCleanup_TwoMocksCleanedUp(t *testing.T) {
+	a := &MyMock{}
+	b := &MyMock{}
+
+	fn := func() {
+		a.AssertExpectations(t)
+		b.AssertExpectations(t)
+	}
+
+	t.Cleanup(fn)
+
+	a.On("Abc")
+	b.On("Def")
+}
+
+func Test_TCleanup_TwoMocksCleanedUp_OnlyEffectiveForOne(t *testing.T) {
+	a := &MyMock{}
+	b := &MyMock{} // want "mocks must have an AssertExpectations registered in a defer or t.Cleanup"
+	b.On("")
+
+	fn := func() {
+		a.AssertExpectations(t)
+		b.AssertExpectations(t)
+	}
+
+	t.Cleanup(fn)
+
+	a.On("Abc")
+	b.On("Def")
 }
 
 func Test_GetMockFromFunction(t *testing.T) {
