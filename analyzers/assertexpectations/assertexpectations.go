@@ -1,6 +1,7 @@
 package assertexpectations
 
 import (
+	"go/token"
 	"go/types"
 
 	"golang.org/x/tools/go/analysis"
@@ -21,6 +22,10 @@ func run(pass *analysis.Pass) (any, error) {
 	pssa := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA)
 	for _, f := range pssa.SrcFuncs {
 		for _, b := range f.Blocks {
+			if b == f.Recover {
+				continue
+			}
+
 			for _, instr := range b.Instrs {
 				alloc, ok := instr.(*ssa.Alloc)
 				if !ok {
@@ -31,7 +36,7 @@ func run(pass *analysis.Pass) (any, error) {
 					continue
 				}
 
-				handleReferrers(pass, alloc)
+				handleReferrers(pass, alloc, f.Recover)
 			}
 		}
 	}
@@ -39,13 +44,26 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-func handleReferrers(pass *analysis.Pass, alloc *ssa.Alloc) {
+func handleReferrers(pass *analysis.Pass, alloc *ssa.Alloc, skipBlock *ssa.BasicBlock) {
+	var pos token.Pos
 	for _, ref := range *alloc.Referrers() {
-		continuation := handleReferrer(alloc, ref)
+		// It's possible that an alloc from one block will refer to the recover block. We don't want
+		// to analyze things inside of the recover block.
+		if ref.Block() == skipBlock {
+			continue
+		}
+		continuation, newPos := handleReferrer(alloc, ref)
+		if pos == 0 {
+			pos = newPos
+		}
+
 		switch continuation {
 		case report:
+			if pos == 0 {
+				pos = alloc.Pos()
+			}
 			pass.Reportf(
-				alloc.Pos(),
+				pos,
 				"mocks must have an AssertExpectations registered in a defer or t.Cleanup",
 			)
 		case succeed:
@@ -63,23 +81,23 @@ const (
 	succeed
 )
 
-func handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) continuation {
+func handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) (continuation, token.Pos) {
 	switch ref := instr.(type) {
 	case *ssa.Store:
 		if ref.Addr != alloc {
-			return keepGoing
+			return keepGoing, 0
 		}
 
 		_, ok := ref.Val.(*ssa.Alloc)
 		if ok {
 			// If the RHS of the store operation is an allocation, that means it's a struct literal
 			// and we should analyze it.
-			return keepGoing
+			return keepGoing, ref.Val.Pos()
 		} else {
 			// If it's not an allocation it could be something like a function call. If we're
 			// storing the result of a function call, we'll analyze that function elsewhere so we
 			// can assume it has set up AssertExpectations correctly.
-			return succeed
+			return succeed, 0
 		}
 	case *ssa.MakeClosure:
 		isCleanup := false
@@ -91,7 +109,7 @@ func handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) continuation {
 		}
 
 		if !isCleanup {
-			return report
+			return report, 0
 		}
 
 		var freeVar *ssa.FreeVar
@@ -118,26 +136,20 @@ func handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) continuation {
 		}
 
 		if !foundAssertExpectations {
-			return report
+			return report, 0
 		}
-		return succeed
+		return succeed, 0
 
 	case ssa.Value:
 		deferredCall, ok := deferredCall(ref)
 		if !ok || !isAssertExpectations(deferredCall) {
-			return report
+			return report, 0
 		}
 
-		return succeed
+		return succeed, 0
 
-	case *ssa.Defer:
-		if isAssertExpectations(ref.Call) {
-			return succeed
-		}
-
-		return report
 	default:
-		return report
+		return report, 0
 	}
 }
 
