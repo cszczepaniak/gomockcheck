@@ -104,12 +104,25 @@ func Test_Defer_WithClosure_TwoMocks_OnlyEffectiveForOne(t *testing.T) {
 	a.On("Abc")
 	b.On("Abc")
 }
+
 func Test_Defer_WithClosure_ButWrongCalls(t *testing.T) {
 	a := &MyMock{} // want "mocks must have an AssertExpectations registered in a defer or t.Cleanup"
 
 	defer func() {
 		a.AssertCalled(t, "")
 	}()
+
+	a.On("Abc")
+}
+
+func Test_Defer_WithClosureDeclared(t *testing.T) {
+	a := &MyMock{}
+
+	fn := func() {
+		a.AssertExpectations(t)
+	}
+
+	defer fn()
 
 	a.On("Abc")
 }
