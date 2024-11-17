@@ -1,6 +1,7 @@
 package assertexpectations
 
 import (
+	"fmt"
 	"go/token"
 	"go/types"
 
@@ -15,6 +16,18 @@ func New() *analysis.Analyzer {
 		Doc:      "Ensure that AssertExpectations is called on mock objects",
 		Run:      run,
 		Requires: []*analysis.Analyzer{buildssa.Analyzer},
+	}
+}
+
+var debug = false
+
+func setDebug(val bool) {
+	debug = val
+}
+
+func debugf(s string, args ...any) {
+	if debug {
+		fmt.Printf(s, args...)
 	}
 }
 
