@@ -66,6 +66,9 @@ const (
 func handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) continuation {
 	switch ref := instr.(type) {
 	case *ssa.Store:
+		// It's fine to store something in our allocated memory before we set up the
+		// AssertExpectations call. This isn't something the user specifies, rather something Go
+		// does on their behalf.
 		return keepGoing
 	case *ssa.MakeClosure:
 		isCleanup := false
