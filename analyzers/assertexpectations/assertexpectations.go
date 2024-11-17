@@ -111,12 +111,12 @@ func (r runner) handleReferrers(pass *analysis.Pass, alloc *ssa.Alloc, skipBlock
 		if ref.Block() == skipBlock {
 			continue
 		}
-		continuation, newPos := r.handleReferrer(alloc, ref)
-		if pos == 0 {
-			pos = newPos
-		}
-
-		switch continuation {
+		continuation := r.handleReferrer(alloc, ref)
+		switch c := continuation.(type) {
+		case keepGoing:
+			if pos == 0 {
+				pos = c.pos
+			}
 		case report:
 			if pos == 0 {
 				pos = alloc.Pos()
@@ -127,36 +127,43 @@ func (r runner) handleReferrers(pass *analysis.Pass, alloc *ssa.Alloc, skipBlock
 			)
 		case succeed:
 			return
-		case keepGoing:
 		}
 	}
 }
 
-type continuation int
+type continuation interface{ c() }
 
-const (
-	keepGoing continuation = iota
-	report
-	succeed
-)
+type report struct{}
 
-func (r runner) handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) (continuation, token.Pos) {
+func (report) c() {}
+
+type succeed struct{}
+
+func (succeed) c() {}
+
+type keepGoing struct {
+	pos token.Pos
+}
+
+func (keepGoing) c() {}
+
+func (r runner) handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) continuation {
 	switch ref := instr.(type) {
 	case *ssa.Store:
 		if ref.Addr != alloc {
-			return keepGoing, 0
+			return keepGoing{}
 		}
 
 		_, ok := ref.Val.(*ssa.Alloc)
 		if ok {
 			// If the RHS of the store operation is an allocation, that means it's a struct literal
 			// and we should analyze it.
-			return keepGoing, ref.Val.Pos()
+			return keepGoing{pos: ref.Val.Pos()}
 		} else {
 			// If it's not an allocation it could be something like a function call. If we're
 			// storing the result of a function call, we'll analyze that function elsewhere so we
 			// can assume it has set up AssertExpectations correctly.
-			return succeed, 0
+			return succeed{}
 		}
 	case *ssa.MakeClosure:
 		isCleanup := false
@@ -168,7 +175,7 @@ func (r runner) handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) (continu
 		}
 
 		if !isCleanup {
-			return report, 0
+			return report{}
 		}
 
 		var freeVar *ssa.FreeVar
@@ -195,20 +202,20 @@ func (r runner) handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) (continu
 		}
 
 		if !foundAssertExpectations {
-			return report, 0
+			return report{}
 		}
-		return succeed, 0
+		return succeed{}
 
 	case ssa.Value:
 		deferredCall, ok := deferredCall(ref)
 		if !ok || !r.isAssertExpectations(deferredCall) {
-			return report, 0
+			return report{}
 		}
 
-		return succeed, 0
+		return succeed{}
 
 	default:
-		return report, 0
+		return report{}
 	}
 }
 
