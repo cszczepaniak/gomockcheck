@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/cszczepaniak/gomockcheck/analyzers/internal/typeutils"
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/buildssa"
 	"golang.org/x/tools/go/ssa"
@@ -63,6 +64,10 @@ func (r runner) isMockObjName(obj types.Object) bool {
 }
 
 func (r runner) isMockObj(obj types.Object) bool {
+	if obj == nil {
+		return false
+	}
+
 	for _, typ := range r.types {
 		if obj.Pkg().Path() == typ.Pkg && obj.Name() == typ.Name {
 			return true
@@ -335,15 +340,6 @@ func (r runner) isAssertExpectations(call ssa.CallCommon) bool {
 		return false
 	}
 
-	ptr, ok := call.Args[0].Type().(*types.Pointer)
-	if !ok {
-		return false
-	}
-
-	named, ok := ptr.Elem().(*types.Named)
-	if !ok {
-		return false
-	}
-
-	return r.isMockObj(named.Obj())
+	obj := typeutils.GetObjForPtrToNamedType(call.Args[0].Type())
+	return r.isMockObj(obj)
 }
