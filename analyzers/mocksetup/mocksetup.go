@@ -1,6 +1,7 @@
 package mocksetup
 
 import (
+	"fmt"
 	"go/ast"
 	"go/constant"
 	"go/types"
@@ -148,17 +149,24 @@ func checkMockDotOnCall(pass *analysis.Pass, mockDotOnCall *ast.CallExpr) bool {
 	}
 
 	var badIdxStrs []string
+	variadicParamHint := ""
 	for i, arg := range mockDotOnCall.Args[1:] {
 		want := sig.Params().At(i).Type()
 		if !argTypeIsValid(pass.TypesInfo, want, arg) {
 			badIdxStrs = append(badIdxStrs, strconv.Itoa(i))
+			if i == len(mockDotOnCall.Args)-2 &&
+				// If we wanted []T but had T for the variadic parameter we'll add more help.
+				sig.Variadic() &&
+				types.Identical(want, types.NewSlice(pass.TypesInfo.TypeOf(arg))) {
+				variadicParamHint = fmt.Sprintf(" (last parameter is variadic and should be %s)", want)
+			}
 		}
 	}
 
 	if len(badIdxStrs) > 0 {
 		pass.Reportf(
 			mockDotOnCall.Pos(),
-			"parameter indexes [%s] had incorrect types",
+			"parameter indexes [%s] had incorrect types"+variadicParamHint,
 			strings.Join(badIdxStrs, ", "),
 		)
 	}

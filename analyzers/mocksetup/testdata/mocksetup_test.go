@@ -51,6 +51,10 @@ func TestMethodThatDoesExist_WrongArgumentTypes(t *testing.T) {
 	m := &MyMock{}
 	m.On("Method2", "string", true, 123).Return(nil).Once()    // want `parameter indexes \[0, 2\] had incorrect types`
 	m.On("Method3", 1, true, []bool{false}).Return(nil).Once() // want `parameter indexes \[1\] had incorrect types`
+
+	// With variadic function calls, the last argument can be confusing so let's make sure the
+	// message is different when we have T but needed []T
+	m.On("Method3", 1, true, false).Return(nil).Once() // want `parameter indexes \[1, 2\] had incorrect types \(last parameter is variadic and should be \[\]bool\)`
 }
 
 func TestMethodThatDoesExist_WrongNumberOfArgs_Variadic(t *testing.T) {
