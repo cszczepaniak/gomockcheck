@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/constant"
+	"go/token"
 	"go/types"
 	"iter"
 	"sync"
@@ -60,7 +61,22 @@ func run(pass *analysis.Pass) (any, error) {
 				return true
 			}
 
-			if !checkMockDotOnCall(pass, mockDotOnCall) {
+			// Find the mock import and figure out what it's called.
+			getMockImportName := sync.OnceValue(func() string {
+				for _, imp := range stack[0].(*ast.File).Imports {
+					path := constant.StringVal(constant.MakeFromLiteral(imp.Path.Value, token.STRING, 0))
+					if path == names.TestifyMockPkg {
+						if imp.Name == nil {
+							return mockType.Obj().Pkg().Name()
+						}
+						return imp.Name.Name
+					}
+				}
+
+				return mockType.Obj().Pkg().Name()
+			})
+
+			if !checkMockDotOnCall(pass, mockDotOnCall, getMockImportName) {
 				return true
 			}
 
@@ -99,7 +115,7 @@ func isMockDotOn(typesInfo *types.Info, c *ast.CallExpr) bool {
 	return true
 }
 
-func checkMockDotOnCall(pass *analysis.Pass, mockDotOnCall *ast.CallExpr) bool {
+func checkMockDotOnCall(pass *analysis.Pass, mockDotOnCall *ast.CallExpr, getMockImportName func() string) bool {
 	// We know this function has at least one argument and that the first one is always a
 	// string. Let's check to make sure it's a constant and report a problem if it isn't.
 	typ, ok := pass.TypesInfo.Types[mockDotOnCall.Args[0]]
@@ -155,35 +171,34 @@ func checkMockDotOnCall(pass *analysis.Pass, mockDotOnCall *ast.CallExpr) bool {
 	}
 
 	for i, arg := range mockDotOnCall.Args[1:] {
-		want := sig.Params().At(i).Type()
-		if !argTypeIsValid(pass.TypesInfo, want, arg) {
-			msg := fmt.Sprintf("invalid parameter type in mock setup; wanted %s", want)
-			if i == len(mockDotOnCall.Args)-2 &&
-				// If we wanted []T but had T for the variadic parameter we'll add more help.
-				sig.Variadic() &&
-				types.Identical(want, types.NewSlice(pass.TypesInfo.TypeOf(arg))) {
-				msg += " (hint: last parameter is variadic, make it a slice)"
-			}
-
-			pass.Reportf(arg.Pos(), msg)
+		if isMockAnything(pass.TypesInfo, arg) {
+			continue
 		}
+
+		want := sig.Params().At(i).Type()
+
+		if handleMockAnythingOfType(pass, want, arg) {
+			continue
+		}
+
+		iface := getInterfaceType(want)
+		argTyp := pass.TypesInfo.TypeOf(arg)
+		if types.Identical(want, argTyp) || (iface != nil && types.Implements(argTyp, iface)) {
+			continue
+		}
+
+		msg := fmt.Sprintf("invalid parameter type in mock setup; wanted %s", want)
+		if i == len(mockDotOnCall.Args)-2 &&
+			// If we wanted []T but had T for the variadic parameter we'll add more help.
+			sig.Variadic() &&
+			types.Identical(want, types.NewSlice(pass.TypesInfo.TypeOf(arg))) {
+			msg += " (hint: last parameter is variadic, make it a slice)"
+		}
+
+		pass.Reportf(arg.Pos(), msg)
 	}
 
 	return true
-}
-
-func argTypeIsValid(info *types.Info, want types.Type, got ast.Expr) bool {
-	if isMockAnything(info, got) {
-		return true
-	}
-
-	gotTyp, ok := info.Types[got]
-	if !ok {
-		// TODO: what?
-		return false
-	}
-
-	return types.Identical(want, gotTyp.Type)
 }
 
 func isMockAnything(info *types.Info, arg ast.Expr) bool {
@@ -196,6 +211,67 @@ func isMockAnything(info *types.Info, arg ast.Expr) bool {
 	}
 
 	return names.IsTestifySymbol(obj, "Anything")
+}
+
+func handleMockAnythingOfType(pass *analysis.Pass, want types.Type, arg ast.Expr) bool {
+	call, ok := arg.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+
+	callee := typeutil.StaticCallee(pass.TypesInfo, call)
+	if !names.IsTestifySymbol(callee, "AnythingOfType") {
+		return false
+	}
+
+	// If the actual type is an interface, the AnythingOfType is likely asserting that the type
+	// passed in is a specific implementation of that interface. We can't do much more to verify,
+	// but we should consider it "handled" because this was a mock.AnythingOfType.
+	if getInterfaceType(want) != nil {
+		return true
+	}
+
+	// Uses of mock.AnythingOfType with concrete types are not allowed. These should be simplified
+	// to mock.Anything. Use the same import name that was used for the mock.AnythingOfType
+	var edit string
+	switch call := call.Fun.(type) {
+	case *ast.Ident:
+		edit = "Anything"
+	case *ast.SelectorExpr:
+		edit = call.X.(*ast.Ident).Name + ".Anything"
+	}
+
+	var suggestedFixes []analysis.SuggestedFix
+	if edit != "" {
+		suggestedFixes = []analysis.SuggestedFix{{
+			Message: "replace with mock.Anything",
+			TextEdits: []analysis.TextEdit{{
+				Pos:     arg.Pos(),
+				End:     arg.End(),
+				NewText: []byte(edit),
+			}},
+		}}
+	}
+
+	pass.Report(analysis.Diagnostic{
+		Pos:            arg.Pos(),
+		End:            arg.End(),
+		Message:        "mock.AnythingOfType is equivalent to mock.Anything when the input type is concrete; use mock.Anything instead",
+		SuggestedFixes: suggestedFixes,
+	})
+
+	return true
+}
+
+func getInterfaceType(typ types.Type) *types.Interface {
+	switch typ := typ.(type) {
+	case *types.Interface:
+		return typ
+	case *types.Named:
+		return getInterfaceType(typ.Underlying())
+	default:
+		return nil
+	}
 }
 
 // distinctMethods returns the methods on this type that aren't on the mock type. Precondition:
