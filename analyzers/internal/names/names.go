@@ -11,6 +11,10 @@ func IsTestifyPkg(obj types.Object) bool {
 	return obj != nil && obj.Pkg() != nil && obj.Pkg().Path() == TestifyMockPkg
 }
 
+func IsTestifySymbol(obj types.Object, name string) bool {
+	return IsTestifyPkg(obj) && obj.Name() == name
+}
+
 func IsTestifyMock(obj types.Object) bool {
-	return IsTestifyPkg(obj) && obj.Name() == MockType
+	return IsTestifySymbol(obj, MockType)
 }

@@ -189,7 +189,7 @@ func isMockAnything(info *types.Info, arg ast.Expr) bool {
 		obj = info.ObjectOf(arg.Sel)
 	}
 
-	return names.IsTestifyPkg(obj) && obj.Name() == "Anything"
+	return names.IsTestifySymbol(obj, "Anything")
 }
 
 // distinctMethods returns the methods on this type that aren't on the mock type. Precondition:

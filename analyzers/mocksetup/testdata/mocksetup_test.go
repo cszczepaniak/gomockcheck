@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"testing"
 
+	"example.com/internal"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -14,7 +15,7 @@ type MyMock struct {
 
 func (m *MyMock) Method1(a string) error                        { return nil }
 func (m *MyMock) Method2(b int, c bool, d string) (bool, error) { return false, nil }
-func (m *MyMock) Method3(a int, b string, c ...bool) {
+func (m *MyMock) Method3(a int, b internal.SomeType, c ...bool) {
 	m.Called(a, b, c)
 }
 
@@ -48,7 +49,8 @@ func TestMethodThatDoesExist_WrongNumberOfArgs(t *testing.T) {
 
 func TestMethodThatDoesExist_WrongArgumentTypes(t *testing.T) {
 	m := &MyMock{}
-	m.On("Method2", "string", true, 123).Return(nil).Once() // want `parameter indexes \[0, 2\] had incorrect types`
+	m.On("Method2", "string", true, 123).Return(nil).Once()    // want `parameter indexes \[0, 2\] had incorrect types`
+	m.On("Method3", 1, true, []bool{false}).Return(nil).Once() // want `parameter indexes \[1\] had incorrect types`
 }
 
 func TestMethodThatDoesExist_WrongNumberOfArgs_Variadic(t *testing.T) {
@@ -58,7 +60,7 @@ func TestMethodThatDoesExist_WrongNumberOfArgs_Variadic(t *testing.T) {
 
 func TestMethodThatDoesExist_WrongArgumentTypes_Variadic(t *testing.T) {
 	m := &MyMock{}
-	m.On("Method3", 123, "", []int{1, 2, 3}).Return().Once() // want `parameter indexes \[2\] had incorrect types`
+	m.On("Method3", 123, internal.SomeType{}, []int{1, 2, 3}).Return().Once() // want `parameter indexes \[2\] had incorrect types`
 }
 
 func TestNonConstantMethodName(t *testing.T) {
