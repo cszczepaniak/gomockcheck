@@ -9,3 +9,7 @@ import (
 func TestMockSetup(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), New(), "./...")
 }
+
+func TestMockSetup_SuggestedFixes(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), New(), "./suggestedfixes")
+}
