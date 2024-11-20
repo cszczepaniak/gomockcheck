@@ -34,6 +34,11 @@ func TestMockAnything(t *testing.T) {
 	m.On("Method1", mock.Anything).Return(nil).Once()
 	m.On("Method2", mock.Anything, true, mock.Anything).Return(nil).Once()
 	m.On("Method3", mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+
+	// Arg counts still apply even with mock.Anything
+	m.On("Method1", mock.Anything, mock.Anything).Return(nil).Once()                               // want `call is mocked for 2 arguments, but method "Method1" takes 1`
+	m.On("Method2", true, mock.Anything).Return(nil).Once()                                        // want `call is mocked for 2 arguments, but method "Method2" takes 3`
+	m.On("Method3", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once() // want `call is mocked for 4 arguments, but method "Method3" takes 3`
 }
 
 func TestMethodThatDoesExist_WrongNumberOfArgs(t *testing.T) {
