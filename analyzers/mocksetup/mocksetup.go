@@ -1,7 +1,6 @@
 package mocksetup
 
 import (
-	"fmt"
 	"go/ast"
 	"go/constant"
 	"go/types"
@@ -190,9 +189,6 @@ func isMockAnything(info *types.Info, arg ast.Expr) bool {
 		obj = info.ObjectOf(arg.Sel)
 	}
 
-	if obj != nil {
-		fmt.Println(obj)
-	}
 	return names.IsTestifyPkg(obj) && obj.Name() == "Anything"
 }
 
