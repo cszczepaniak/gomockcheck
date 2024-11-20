@@ -181,21 +181,18 @@ func checkMockDotOnCall(pass *analysis.Pass, mockDotOnCall *ast.CallExpr, getMoc
 			continue
 		}
 
-		iface := getInterfaceType(want)
 		argTyp := pass.TypesInfo.TypeOf(arg)
-		if types.Identical(want, argTyp) || (iface != nil && types.Implements(argTyp, iface)) {
-			continue
-		}
+		if !types.AssignableTo(argTyp, want) {
+			msg := fmt.Sprintf("invalid parameter type in mock setup; %s is not assignable to %s", argTyp, want)
+			if i == len(mockDotOnCall.Args)-2 &&
+				// If we wanted []T but had T for the variadic parameter we'll add more help.
+				sig.Variadic() &&
+				types.Identical(want, types.NewSlice(pass.TypesInfo.TypeOf(arg))) {
+				msg += " (hint: last parameter is variadic, make it a slice)"
+			}
 
-		msg := fmt.Sprintf("invalid parameter type in mock setup; wanted %s", want)
-		if i == len(mockDotOnCall.Args)-2 &&
-			// If we wanted []T but had T for the variadic parameter we'll add more help.
-			sig.Variadic() &&
-			types.Identical(want, types.NewSlice(pass.TypesInfo.TypeOf(arg))) {
-			msg += " (hint: last parameter is variadic, make it a slice)"
+			pass.Reportf(arg.Pos(), msg)
 		}
-
-		pass.Reportf(arg.Pos(), msg)
 	}
 
 	return true

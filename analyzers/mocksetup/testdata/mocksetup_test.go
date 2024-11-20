@@ -1,8 +1,12 @@
 package testdata
 
 import (
+	"bytes"
+	"io"
 	"math/rand/v2"
+	"os"
 	"strconv"
+	"strings"
 	"testing"
 
 	"example.com/internal"
@@ -15,9 +19,8 @@ type MyMock struct {
 
 func (m *MyMock) Method1(a string) error                        { return nil }
 func (m *MyMock) Method2(b int, c bool, d string) (bool, error) { return false, nil }
-func (m *MyMock) Method3(a int, b internal.SomeType, c ...bool) {
-	m.Called(a, b, c)
-}
+func (m *MyMock) Method3(a int, b internal.SomeType, c ...bool) {}
+func (m *MyMock) Method4(r io.Reader)                           {}
 
 func TestMethodThatDoesNotExist(t *testing.T) {
 	m := &MyMock{}
@@ -50,15 +53,24 @@ func TestMethodThatDoesExist_WrongNumberOfArgs(t *testing.T) {
 func TestMethodThatDoesExist_WrongArgumentTypes(t *testing.T) {
 	m := &MyMock{}
 	m.On("Method2",
-		"string", // want `invalid parameter type in mock setup; wanted int`
+		"string", // want `invalid parameter type in mock setup; string is not assignable to int`
 		true,
-		123, // want `invalid parameter type in mock setup; wanted string`
+		123, // want `invalid parameter type in mock setup; int is not assignable to string`
 	).Return(nil).Once()
 	m.On("Method3",
 		1,
-		true, // want `invalid parameter type in mock setup; wanted example.com/internal.SomeType`
+		true, // want `invalid parameter type in mock setup; bool is not assignable to example.com/internal.SomeType`
 		[]bool{false},
 	).Return(nil).Once()
+}
+
+func TestMethodWithInterfaceParam_DifferentImplementations(t *testing.T) {
+	m := &MyMock{}
+	m.On("Method4", nil)
+	m.On("Method4", &bytes.Buffer{})
+	m.On("Method4", &os.File{})
+	m.On("Method4", "foo")              // want "invalid parameter type in mock setup; string is not assignable to io.Reader"
+	m.On("Method4", &strings.Builder{}) // want `invalid parameter type in mock setup; \*strings.Builder is not assignable to io.Reader`
 }
 
 func TestMethodThatDoesExist_WrongNumberOfArgs_Variadic(t *testing.T) {
@@ -71,7 +83,7 @@ func TestMethodThatDoesExist_WrongArgumentTypes_Variadic(t *testing.T) {
 	m.On("Method3",
 		123,
 		internal.SomeType{},
-		[]int{1, 2, 3}, // want `invalid parameter type in mock setup; wanted \[\]bool`
+		[]int{1, 2, 3}, // want `invalid parameter type in mock setup; \[\]int is not assignable to \[\]bool`
 	).Return().Once()
 
 	// With variadic function calls, the last argument can be confusing so let's make sure the
@@ -79,7 +91,7 @@ func TestMethodThatDoesExist_WrongArgumentTypes_Variadic(t *testing.T) {
 	m.On("Method3",
 		1,
 		internal.SomeType{},
-		false, // want `invalid parameter type in mock setup; wanted \[\]bool \(hint: last parameter is variadic, make it a slice\)`
+		false, // want `invalid parameter type in mock setup; bool is not assignable to \[\]bool \(hint: last parameter is variadic, make it a slice\)`
 	).Return(nil).Once()
 }
 
