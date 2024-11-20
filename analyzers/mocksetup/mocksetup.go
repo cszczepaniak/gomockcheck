@@ -48,22 +48,25 @@ func setMockType(typ *types.Named) {
 
 func run(pass *analysis.Pass) (any, error) {
 	inspector := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
-	for n := range inspector.PreorderSeq(&ast.CallExpr{}) {
-		mockDotOnCall := n.(*ast.CallExpr)
+	inspector.WithStack(
+		[]ast.Node{&ast.CallExpr{}},
+		func(n ast.Node, push bool, stack []ast.Node) (proceed bool) {
+			mockDotOnCall := n.(*ast.CallExpr)
+			if !isMockDotOn(pass.TypesInfo, mockDotOnCall) {
+				return true
+			}
 
-		if !isMockDotOn(pass.TypesInfo, mockDotOnCall) {
-			continue
-		}
+			if !checkMockDotOnCall(pass, mockDotOnCall) {
+				return true
+			}
 
-		if !checkMockDotOnCall(pass, mockDotOnCall) {
-			continue
-		}
-
-		// TODO check more things:
-		// - If the mocked call has return arguments, there must be a .Return
-		// - There must be the correct number of arguments to .Return
-		// - The arguments to .Return must be of the correct type
-	}
+			// TODO check more things:
+			// - If the mocked call has return arguments, there must be a .Return
+			// - There must be the correct number of arguments to .Return
+			// - The arguments to .Return must be of the correct type
+			return true
+		},
+	)
 
 	return nil, nil
 }
