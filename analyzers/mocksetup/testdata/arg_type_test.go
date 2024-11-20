@@ -23,10 +23,13 @@ func TestMockAnything(t *testing.T) {
 }
 
 func TestMockMatchedBy(t *testing.T) {
+	f1 := func() func(string) bool {
+		return func(s string) bool { return false }
+	}
 	m := &MyMock{}
 	m.On(
 		"Method1",
-		mock.MatchedBy(func(s string) bool { return false }),
+		mock.MatchedBy(f1()),
 	).Return(nil).Once()
 	m.On(
 		"Method1",

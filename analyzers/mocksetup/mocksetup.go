@@ -93,6 +93,10 @@ func run(pass *analysis.Pass) (any, error) {
 
 func isMockDotOn(typesInfo *types.Info, c *ast.CallExpr) bool {
 	fn := typeutil.StaticCallee(typesInfo, c)
+	if fn == nil {
+		return false
+	}
+
 	fnSig := fn.Signature()
 	recv := fnSig.Recv()
 	if recv == nil || fn.Name() != "On" {
