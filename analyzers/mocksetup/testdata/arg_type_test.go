@@ -22,6 +22,61 @@ func TestMockAnything(t *testing.T) {
 	m.On("Method3", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once() // want `call is mocked for 4 arguments, but method "Method3" takes 3`
 }
 
+func TestMockMatchedBy(t *testing.T) {
+	m := &MyMock{}
+	m.On(
+		"Method1",
+		mock.MatchedBy(func(s string) bool { return false }),
+	).Return(nil).Once()
+	m.On(
+		"Method1",
+		mock.MatchedBy(func(s bool) string { return "" }), // want `the argument to mock.MatchedBy must be func\(string\) bool`
+	).Return(nil).Once()
+	m.On(
+		"Method1",
+		mock.MatchedBy(func(s bool) bool { return false }), // want `the argument to mock.MatchedBy must be func\(string\) bool`
+	).Return(nil).Once()
+	m.On(
+		"Method1",
+		mock.MatchedBy("wrong"), // want `the argument to mock.MatchedBy must be func\(string\) bool`
+	).Return(nil).Once()
+	m.On(
+		"Method1",
+		mock.MatchedBy(123), // want `the argument to mock.MatchedBy must be func\(string\) bool`
+	).Return(nil).Once()
+
+	m.On(
+		"Method2",
+		mock.MatchedBy(func(i int) bool { return false }),
+		mock.Anything,
+		mock.Anything,
+	).Return(nil).Once()
+	m.On(
+		"Method2",
+		mock.MatchedBy(func(i int) {}), // want `the argument to mock.MatchedBy must be func\(int\) bool`
+		mock.Anything,
+		mock.Anything,
+	).Return(nil).Once()
+	m.On(
+		"Method2",
+		mock.MatchedBy(func(s string) bool { return false }), // want `the argument to mock.MatchedBy must be func\(int\) bool`
+		mock.Anything,
+		mock.Anything,
+	).Return(nil).Once()
+	m.On(
+		"Method2",
+		mock.MatchedBy("wrong"), // want `the argument to mock.MatchedBy must be func\(int\) bool`
+		mock.Anything,
+		mock.Anything,
+	).Return(nil).Once()
+	m.On(
+		"Method2",
+		mock.MatchedBy(123), // want `the argument to mock.MatchedBy must be func\(int\) bool`
+		mock.Anything,
+		mock.Anything,
+	).Return(nil).Once()
+}
+
 func TestMethodThatDoesExist_WrongArgumentTypes(t *testing.T) {
 	m := &MyMock{}
 	m.On("Method2",

@@ -3,6 +3,7 @@ package testdata
 import (
 	"io"
 
+	"example.com/internal"
 	"github.com/stretchr/testify/mock"
 )
 

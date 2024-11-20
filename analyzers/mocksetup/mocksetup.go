@@ -171,13 +171,14 @@ func checkMockDotOnCall(pass *analysis.Pass, mockDotOnCall *ast.CallExpr, getMoc
 	}
 
 	for i, arg := range mockDotOnCall.Args[1:] {
-		if isMockAnything(pass.TypesInfo, arg) {
-			continue
-		}
-
 		want := sig.Params().At(i).Type()
 
-		if handleMockAnythingOfType(pass, want, arg) {
+		switch {
+		case isMockAnything(pass.TypesInfo, arg):
+			continue
+		case handleMockAnythingOfType(pass, want, arg):
+			continue
+		case handleMockMatchedBy(pass, want, arg):
 			continue
 		}
 
@@ -257,6 +258,40 @@ func handleMockAnythingOfType(pass *analysis.Pass, want types.Type, arg ast.Expr
 		SuggestedFixes: suggestedFixes,
 	})
 
+	return true
+}
+
+func handleMockMatchedBy(pass *analysis.Pass, want types.Type, arg ast.Expr) bool {
+	call, ok := arg.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+
+	callee := typeutil.StaticCallee(pass.TypesInfo, call)
+	if !names.IsTestifySymbol(callee, "MatchedBy") {
+		return false
+	}
+
+	report := func() {
+		pass.Reportf(call.Args[0].Pos(), "the argument to mock.MatchedBy must be func(%s) bool", want)
+	}
+
+	argTyp := pass.TypesInfo.TypeOf(call.Args[0])
+	fn, ok := argTyp.(*types.Signature)
+	if !ok {
+		report()
+		return true
+	}
+
+	boolTyp := types.Universe.Lookup("bool").Type()
+	if fn.Params().Len() != 1 ||
+		!types.Identical(want, fn.Params().At(0).Type()) ||
+		fn.Results().Len() != 1 ||
+		!types.Identical(boolTyp, fn.Results().At(0).Type()) {
+		report()
+	}
+
+	// Return true because at this point we've seen a properly configured mock.MatchedBy
 	return true
 }
 
