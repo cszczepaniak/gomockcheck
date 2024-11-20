@@ -49,12 +49,16 @@ func TestMethodThatDoesExist_WrongNumberOfArgs(t *testing.T) {
 
 func TestMethodThatDoesExist_WrongArgumentTypes(t *testing.T) {
 	m := &MyMock{}
-	m.On("Method2", "string", true, 123).Return(nil).Once()    // want `parameter indexes \[0, 2\] had incorrect types`
-	m.On("Method3", 1, true, []bool{false}).Return(nil).Once() // want `parameter indexes \[1\] had incorrect types`
-
-	// With variadic function calls, the last argument can be confusing so let's make sure the
-	// message is different when we have T but needed []T
-	m.On("Method3", 1, true, false).Return(nil).Once() // want `parameter indexes \[1, 2\] had incorrect types \(last parameter is variadic and should be \[\]bool\)`
+	m.On("Method2",
+		"string", // want `invalid parameter type in mock setup; wanted int`
+		true,
+		123, // want `invalid parameter type in mock setup; wanted string`
+	).Return(nil).Once()
+	m.On("Method3",
+		1,
+		true, // want `invalid parameter type in mock setup; wanted example.com/internal.SomeType`
+		[]bool{false},
+	).Return(nil).Once()
 }
 
 func TestMethodThatDoesExist_WrongNumberOfArgs_Variadic(t *testing.T) {
@@ -64,7 +68,19 @@ func TestMethodThatDoesExist_WrongNumberOfArgs_Variadic(t *testing.T) {
 
 func TestMethodThatDoesExist_WrongArgumentTypes_Variadic(t *testing.T) {
 	m := &MyMock{}
-	m.On("Method3", 123, internal.SomeType{}, []int{1, 2, 3}).Return().Once() // want `parameter indexes \[2\] had incorrect types`
+	m.On("Method3",
+		123,
+		internal.SomeType{},
+		[]int{1, 2, 3}, // want `invalid parameter type in mock setup; wanted \[\]bool`
+	).Return().Once()
+
+	// With variadic function calls, the last argument can be confusing so let's make sure the
+	// message is different when we have T but needed []T
+	m.On("Method3",
+		1,
+		internal.SomeType{},
+		false, // want `invalid parameter type in mock setup; wanted \[\]bool \(hint: last parameter is variadic, make it a slice\)`
+	).Return(nil).Once()
 }
 
 func TestNonConstantMethodName(t *testing.T) {
