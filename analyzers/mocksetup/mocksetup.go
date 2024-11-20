@@ -1,6 +1,7 @@
 package mocksetup
 
 import (
+	"fmt"
 	"go/ast"
 	"go/constant"
 	"go/types"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/cszczepaniak/gomockcheck/analyzers/internal/names"
 	"github.com/cszczepaniak/gomockcheck/analyzers/internal/typeutils"
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
@@ -149,8 +151,7 @@ func checkMockDotOnCall(pass *analysis.Pass, mockDotOnCall *ast.CallExpr) bool {
 	var badIdxStrs []string
 	for i, arg := range mockDotOnCall.Args[1:] {
 		want := sig.Params().At(i).Type()
-		got := pass.TypesInfo.TypeOf(arg)
-		if !types.Identical(want, got) {
+		if !argTypeIsValid(pass.TypesInfo, want, arg) {
 			badIdxStrs = append(badIdxStrs, strconv.Itoa(i))
 		}
 	}
@@ -164,6 +165,35 @@ func checkMockDotOnCall(pass *analysis.Pass, mockDotOnCall *ast.CallExpr) bool {
 	}
 
 	return true
+}
+
+func argTypeIsValid(info *types.Info, want types.Type, got ast.Expr) bool {
+	if isMockAnything(info, got) {
+		return true
+	}
+
+	gotTyp, ok := info.Types[got]
+	if !ok {
+		// TODO: what?
+		return false
+	}
+
+	return types.Identical(want, gotTyp.Type)
+}
+
+func isMockAnything(info *types.Info, arg ast.Expr) bool {
+	var obj types.Object
+	switch arg := arg.(type) {
+	case *ast.Ident:
+		obj = info.ObjectOf(arg)
+	case *ast.SelectorExpr:
+		obj = info.ObjectOf(arg.Sel)
+	}
+
+	if obj != nil {
+		fmt.Println(obj)
+	}
+	return names.IsTestifyPkg(obj) && obj.Name() == "Anything"
 }
 
 // distinctMethods returns the methods on this type that aren't on the mock type. Precondition:

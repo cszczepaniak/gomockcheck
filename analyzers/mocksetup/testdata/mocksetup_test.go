@@ -29,6 +29,13 @@ func TestMethodThatDoesExist(t *testing.T) {
 	m.On("Method2", 1, true, "").Return(nil).Once()
 }
 
+func TestMockAnything(t *testing.T) {
+	m := &MyMock{}
+	m.On("Method1", mock.Anything).Return(nil).Once()
+	m.On("Method2", mock.Anything, true, mock.Anything).Return(nil).Once()
+	m.On("Method3", mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+}
+
 func TestMethodThatDoesExist_WrongNumberOfArgs(t *testing.T) {
 	m := &MyMock{}
 	m.On("Method1", "string", 123).Return(nil).Once() // want `call is mocked for 2 arguments, but method "Method1" takes 1`
