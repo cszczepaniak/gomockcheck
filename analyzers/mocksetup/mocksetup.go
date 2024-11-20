@@ -51,6 +51,10 @@ func run(pass *analysis.Pass) (any, error) {
 	inspector.WithStack(
 		[]ast.Node{&ast.CallExpr{}},
 		func(n ast.Node, push bool, stack []ast.Node) (proceed bool) {
+			if !push {
+				return false
+			}
+
 			mockDotOnCall := n.(*ast.CallExpr)
 			if !isMockDotOn(pass.TypesInfo, mockDotOnCall) {
 				return true
