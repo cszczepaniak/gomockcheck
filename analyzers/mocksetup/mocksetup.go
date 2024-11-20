@@ -26,13 +26,13 @@ func New() *analysis.Analyzer {
 }
 
 var (
-	mockType              types.Type
+	mockType              *types.Named
 	mockMethodSet         *types.MethodSet
 	unexportedMockMethods map[string]struct{}
 	initOnce              sync.Once
 )
 
-func setMockType(typ types.Type) {
+func setMockType(typ *types.Named) {
 	initOnce.Do(func() {
 		mockType = typ
 		mockMethodSet = types.NewMethodSet(typ)
@@ -86,8 +86,9 @@ func isMockDotOn(typesInfo *types.Info, c *ast.CallExpr) bool {
 	}
 
 	// We've found the mock type. Let's notice its method set once so we don't have to keep
-	// recomputing this.
-	setMockType(recv.Type())
+	// recomputing this. These type assertions are guaranteed to pass because of
+	// GetObjForPtrToNamedType.
+	setMockType(recv.Type().(*types.Pointer).Elem().(*types.Named))
 	return true
 }
 
