@@ -55,6 +55,13 @@ func Test_DeferAssert(t *testing.T) {
 	a.On("Foo").Return().Once()
 }
 
+func Test_DeferAssert_CallTestBefore(t *testing.T) {
+	a := &MyMock{}
+	a.Test(t)
+	defer a.AssertExpectations(t)
+	a.On("Foo").Return().Once()
+}
+
 func Test_DeferAssert_OnField(t *testing.T) {
 	a := &MyMock{}
 	defer a.Mock.AssertExpectations(t)
@@ -129,6 +136,13 @@ func Test_Defer_WithClosureDeclared(t *testing.T) {
 
 func Test_TCleanup(t *testing.T) {
 	a := &MyMock{}
+	t.Cleanup(func() { a.AssertExpectations(t) })
+	a.On("Foo").Return().Once()
+}
+
+func Test_TCleanup_CallTestBefore(t *testing.T) {
+	a := &MyMock{}
+	a.Test(t)
 	t.Cleanup(func() { a.AssertExpectations(t) })
 	a.On("Foo").Return().Once()
 }

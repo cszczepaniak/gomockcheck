@@ -214,6 +214,13 @@ func (r runner) handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) continua
 		return report{}
 
 	case ssa.Value:
+		// We allow calling mock.Test(t) before setting up AssertExpectations; this is fine to do
+		// and they can be done in either order.
+		c := resultantCall(ref)
+		if c != nil && r.isTest(c.Call) {
+			return keepGoing{}
+		}
+
 		// Check to see if this value is referred to in a defer statement, which we allow. The defer
 		// must be in a top-level test function.
 		deferredCall, ok := deferredCall(ref)
@@ -337,6 +344,19 @@ func (r runner) isAssertExpectations(call ssa.CallCommon) bool {
 	}
 
 	if call.Value.Name() != "AssertExpectations" {
+		return false
+	}
+
+	obj := typeutils.GetObjForPtrToNamedType(call.Args[0].Type())
+	return r.isMockObj(obj)
+}
+
+func (r runner) isTest(call ssa.CallCommon) bool {
+	if len(call.Args) < 1 {
+		return false
+	}
+
+	if call.Value.Name() != "Test" {
 		return false
 	}
 
