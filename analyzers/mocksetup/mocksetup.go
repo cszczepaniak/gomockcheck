@@ -153,7 +153,7 @@ func (r *runner) checkMockDotOnCall(pass *analysis.Pass, mockDotOnCall *ast.Call
 		}
 
 		argTyp := pass.TypesInfo.TypeOf(arg)
-		if !types.AssignableTo(argTyp, want) {
+		if !types.AssignableTo(argTyp, want) && !types.Identical(argTyp, types.Universe.Lookup("any").Type()) {
 			msg := fmt.Sprintf("invalid parameter type in mock setup; %s is not assignable to %s", argTyp, want)
 			if i == len(mockDotOnCall.Args)-2 &&
 				// If we wanted []T but had T for the variadic parameter we'll add more help.

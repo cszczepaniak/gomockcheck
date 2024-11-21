@@ -80,6 +80,33 @@ func TestMockMatchedBy(t *testing.T) {
 	).Return(nil).Once()
 }
 
+func TestMockArgs_Any(t *testing.T) {
+	// If an argument has type any or interface{} we allow it. This is most commonly the case when a
+	// user defines a function that returns a mock.MatchedBy as seen below but covers more than just
+	// that case.
+	f1 := func() any {
+		return mock.MatchedBy(func(s string) bool { return false })
+	}
+	m := &MyMock{}
+	m.On(
+		"Method1",
+		f1(),
+	).Return(nil).Once()
+
+	f2 := func() interface{} {
+		return mock.MatchedBy(func(s string) bool { return false })
+	}
+	m.On(
+		"Method1",
+		f2(),
+	).Return(nil).Once()
+
+	m.On(
+		"Method1",
+		any(nil),
+	).Return(nil).Once()
+}
+
 func TestMethodThatDoesExist_WrongArgumentTypes(t *testing.T) {
 	m := &MyMock{}
 	m.On("Method2",
