@@ -185,7 +185,7 @@ func (r runner) handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) continua
 			// Currently we only enforce that there's an AssertExpectations call somewhere in the cleanup
 			// function, but we could maybe also additionally force it to be the first call.
 			c := resultantCall(val)
-			if c != nil && r.isAssertExpectations(c.Call) {
+			if c != nil && r.isMockFunc(c.Call, "AssertExpectations") {
 				return succeed{}
 			}
 		}
@@ -196,14 +196,14 @@ func (r runner) handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) continua
 		// We allow calling mock.Test(t) before setting up AssertExpectations; this is fine to do
 		// and they can be done in either order.
 		c := resultantCall(ref)
-		if c != nil && r.isTest(c.Call) {
+		if c != nil && r.isMockFunc(c.Call, "Test") {
 			return keepGoing{}
 		}
 
 		// Check to see if this value is referred to in a defer statement, which we allow. The defer
 		// must be in a top-level test function.
 		deferredCall, ok := deferredCall(ref)
-		if !ok || !r.isAssertExpectations(deferredCall) {
+		if !ok || !r.isMockFunc(deferredCall, "AssertExpectations") {
 			return report{}
 		}
 
@@ -313,28 +313,17 @@ func isTCleanupOrDefer(val ssa.Instruction) bool {
 	return paramTyp.Params().Len() == 0 && paramTyp.Results().Len() == 0
 }
 
-func (r runner) isAssertExpectations(call ssa.CallCommon) bool {
-	if len(call.Args) < 1 {
-		return false
-	}
-
-	if call.Value.Name() != "AssertExpectations" {
-		return false
-	}
-
+func (r runner) isMockFunc(call ssa.CallCommon, oneOf ...string) bool {
 	obj := typeutils.GetObjForPtrToNamedType(call.Args[0].Type())
-	return r.isMockObj(obj)
-}
-
-func (r runner) isTest(call ssa.CallCommon) bool {
-	if len(call.Args) < 1 {
+	if !r.isMockObj(obj) {
 		return false
 	}
 
-	if call.Value.Name() != "Test" {
-		return false
+	for _, name := range oneOf {
+		if call.Value.Name() == name {
+			return true
+		}
 	}
 
-	obj := typeutils.GetObjForPtrToNamedType(call.Args[0].Type())
-	return r.isMockObj(obj)
+	return false
 }
