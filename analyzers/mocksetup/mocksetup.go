@@ -4,50 +4,39 @@ import (
 	"fmt"
 	"go/ast"
 	"go/constant"
-	"go/token"
 	"go/types"
 	"iter"
-	"sync"
+	"slices"
 
-	"github.com/cszczepaniak/gomockcheck/analyzers/internal/names"
 	"github.com/cszczepaniak/gomockcheck/analyzers/internal/typeutils"
+	"github.com/cszczepaniak/gomockcheck/names"
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/inspector"
 	"golang.org/x/tools/go/types/typeutil"
 )
 
-func New() *analysis.Analyzer {
+func New(typs ...names.QualifiedType) *analysis.Analyzer {
+	r := &runner{
+		types: slices.Concat([]names.QualifiedType{{
+			PkgPath: "github.com/stretchr/testify/mock",
+			Name:    "Mock",
+		}}, typs),
+	}
+
 	return &analysis.Analyzer{
 		Name:     "mocksetup",
 		Doc:      "Checks for common mock setup mistakes",
-		Run:      run,
+		Run:      r.run,
 		Requires: []*analysis.Analyzer{inspect.Analyzer},
 	}
 }
 
-var (
-	mockType              *types.Named
-	mockMethodSet         *types.MethodSet
-	unexportedMockMethods map[string]struct{}
-	initOnce              sync.Once
-)
-
-func setMockType(typ *types.Named) {
-	initOnce.Do(func() {
-		mockType = typ
-		mockMethodSet = types.NewMethodSet(typ)
-
-		unexportedMockMethods = make(map[string]struct{})
-		for m := range iterMethodSet(mockMethodSet) {
-			if !m.Obj().Exported() {
-				unexportedMockMethods[m.Obj().Name()] = struct{}{}
-			}
-		}
-	})
+type runner struct {
+	types []names.QualifiedType
 }
 
-func run(pass *analysis.Pass) (any, error) {
+func (r *runner) run(pass *analysis.Pass) (any, error) {
 	inspector := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 	inspector.WithStack(
 		[]ast.Node{&ast.CallExpr{}},
@@ -57,26 +46,11 @@ func run(pass *analysis.Pass) (any, error) {
 			}
 
 			mockDotOnCall := n.(*ast.CallExpr)
-			if !isMockDotOn(pass.TypesInfo, mockDotOnCall) {
+			if !r.isMockDotOn(pass.TypesInfo, mockDotOnCall) {
 				return true
 			}
 
-			// Find the mock import and figure out what it's called.
-			getMockImportName := sync.OnceValue(func() string {
-				for _, imp := range stack[0].(*ast.File).Imports {
-					path := constant.StringVal(constant.MakeFromLiteral(imp.Path.Value, token.STRING, 0))
-					if path == names.TestifyMockPkg {
-						if imp.Name == nil {
-							return mockType.Obj().Pkg().Name()
-						}
-						return imp.Name.Name
-					}
-				}
-
-				return mockType.Obj().Pkg().Name()
-			})
-
-			if !checkMockDotOnCall(pass, mockDotOnCall, getMockImportName) {
+			if !r.checkMockDotOnCall(pass, mockDotOnCall) {
 				return true
 			}
 
@@ -91,7 +65,7 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-func isMockDotOn(typesInfo *types.Info, c *ast.CallExpr) bool {
+func (r *runner) isMockDotOn(typesInfo *types.Info, c *ast.CallExpr) bool {
 	fn := typeutil.StaticCallee(typesInfo, c)
 	if fn == nil {
 		return false
@@ -108,18 +82,10 @@ func isMockDotOn(typesInfo *types.Info, c *ast.CallExpr) bool {
 		return false
 	}
 
-	if obj.Pkg().Path() != "github.com/stretchr/testify/mock" || obj.Name() != "Mock" {
-		return false
-	}
-
-	// We've found the mock type. Let's notice its method set once so we don't have to keep
-	// recomputing this. These type assertions are guaranteed to pass because of
-	// GetObjForPtrToNamedType.
-	setMockType(recv.Type().(*types.Pointer).Elem().(*types.Named))
-	return true
+	return names.IsOneOf(obj, r.types...)
 }
 
-func checkMockDotOnCall(pass *analysis.Pass, mockDotOnCall *ast.CallExpr, getMockImportName func() string) bool {
+func (r *runner) checkMockDotOnCall(pass *analysis.Pass, mockDotOnCall *ast.CallExpr) bool {
 	// We know this function has at least one argument and that the first one is always a
 	// string. Let's check to make sure it's a constant and report a problem if it isn't.
 	typ, ok := pass.TypesInfo.Types[mockDotOnCall.Args[0]]
@@ -147,7 +113,7 @@ func checkMockDotOnCall(pass *analysis.Pass, mockDotOnCall *ast.CallExpr, getMoc
 	}
 
 	var mockedMethod *types.Selection
-	for m := range distinctMethods(pass.Pkg, selTyp.Recv()) {
+	for m := range r.distinctMethods(pass.Pkg, selTyp.Recv()) {
 		if m.Obj().Name() == mockedMethodName {
 			mockedMethod = m
 			break
@@ -312,21 +278,62 @@ func getInterfaceType(typ types.Type) *types.Interface {
 
 // distinctMethods returns the methods on this type that aren't on the mock type. Precondition:
 // setMockType has been called.
-func distinctMethods(pkg *types.Package, typ types.Type) iter.Seq[*types.Selection] {
+func (r *runner) distinctMethods(pkg *types.Package, typ types.Type) iter.Seq[*types.Selection] {
+	mockTyp := r.getEmbeddedMockType(typ)
+	mockMethodSet := types.NewMethodSet(mockTyp)
+	unexportedMockMethods := make(map[string]struct{})
+	for m := range iterMethodSet(mockMethodSet) {
+		if !m.Obj().Exported() {
+			unexportedMockMethods[m.Obj().Name()] = struct{}{}
+		}
+	}
+
 	return func(yield func(*types.Selection) bool) {
 		mSet := types.NewMethodSet(typ)
-		for i := range mSet.Len() {
-			method := mSet.At(i)
-			mockMethod := mockMethodSet.Lookup(pkg, method.Obj().Name())
-
+		for method := range iterMethodSet(mSet) {
 			_, isUnexpectedMockMethod := unexportedMockMethods[method.Obj().Name()]
+			if isUnexpectedMockMethod {
+				continue
+			}
 
-			if mockMethod == nil && !isUnexpectedMockMethod {
-				if !yield(method) {
-					return
-				}
+			mockMethod := mockMethodSet.Lookup(pkg, method.Obj().Name())
+			if mockMethod == nil && !yield(method) {
+				return
 			}
 		}
+	}
+}
+
+func (r *runner) getEmbeddedMockType(typ types.Type) types.Type {
+	s := getStructType(typ)
+	for i := range s.NumFields() {
+		field := s.Field(i)
+		if !field.Embedded() {
+			continue
+		}
+
+		named, ok := field.Type().(*types.Named)
+		if !ok {
+			continue
+		}
+
+		if names.IsOneOf(named.Obj(), r.types...) {
+			return named
+		}
+	}
+	return nil
+}
+
+func getStructType(typ types.Type) *types.Struct {
+	switch typ := typ.(type) {
+	case *types.Struct:
+		return typ
+	case *types.Named:
+		return getStructType(typ.Underlying())
+	case *types.Pointer:
+		return getStructType(typ.Elem())
+	default:
+		return nil
 	}
 }
 
