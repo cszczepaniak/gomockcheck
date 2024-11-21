@@ -188,6 +188,10 @@ func handleMockAnythingOfType(pass *analysis.Pass, want types.Type, arg ast.Expr
 	}
 
 	callee := typeutil.StaticCallee(pass.TypesInfo, call)
+	if callee == nil {
+		return false
+	}
+
 	if !names.IsTestifySymbol(callee, "AnythingOfType") {
 		return false
 	}
@@ -238,6 +242,10 @@ func handleMockMatchedBy(pass *analysis.Pass, want types.Type, arg ast.Expr) boo
 	}
 
 	callee := typeutil.StaticCallee(pass.TypesInfo, call)
+	if callee == nil {
+		return false
+	}
+
 	if !names.IsTestifySymbol(callee, "MatchedBy") {
 		return false
 	}
