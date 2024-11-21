@@ -173,8 +173,7 @@ func Test_TCleanup_MoreThingsInTheCleanup(t *testing.T) {
 		// This would be weird to do, but I guess we accept it.
 		a.On("Hey")
 
-		// TODO: I think this should be disallowed. Called() should not be called before
-		// AssertExpectations in a cleanup.
+		// This would also be weird to do, but again, it's technically not a problem.
 		a.Called()
 
 		a.AssertExpectations(t)
