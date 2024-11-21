@@ -196,7 +196,7 @@ func (r runner) handleReferrer(alloc *ssa.Alloc, instr ssa.Instruction) continua
 		// We allow calling mock.Test(t) before setting up AssertExpectations; this is fine to do
 		// and they can be done in either order.
 		c := resultantCall(ref)
-		if c != nil && r.isMockFunc(c.Call, "Test") {
+		if c != nil && r.isMockFunc(c.Call, "Test", "On") {
 			return keepGoing{}
 		}
 

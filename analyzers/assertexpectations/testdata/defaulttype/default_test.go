@@ -62,6 +62,13 @@ func Test_DeferAssert_CallTestBefore(t *testing.T) {
 	a.Called()
 }
 
+func Test_DeferAssert_CallOnBefore(t *testing.T) {
+	a := &MyMock{}
+	a.On("")
+	defer a.AssertExpectations(t)
+	a.Called()
+}
+
 func Test_DeferAssert_OnField(t *testing.T) {
 	a := &MyMock{}
 	defer a.Mock.AssertExpectations(t)
@@ -143,6 +150,13 @@ func Test_TCleanup(t *testing.T) {
 func Test_TCleanup_CallTestBefore(t *testing.T) {
 	a := &MyMock{}
 	a.Test(t)
+	t.Cleanup(func() { a.AssertExpectations(t) })
+	a.Called()
+}
+
+func Test_TCleanup_CallOnBefore(t *testing.T) {
+	a := &MyMock{}
+	a.On("")
 	t.Cleanup(func() { a.AssertExpectations(t) })
 	a.Called()
 }
