@@ -49,22 +49,12 @@ type runner struct {
 	types []names.QualifiedType
 }
 
-func (r runner) isMockObjName(obj types.Object) bool {
-	return names.IsOneOf(obj, r.types...)
-}
-
 func (r runner) isMockObj(obj types.Object) bool {
 	if obj == nil {
 		return false
 	}
 
-	for _, typ := range r.types {
-		if obj.Pkg().Path() == typ.PkgPath && obj.Name() == typ.Name {
-			return true
-		}
-	}
-
-	return false
+	return names.IsOneOf(obj, r.types...)
 }
 
 func (r runner) run(pass *analysis.Pass) (any, error) {
@@ -270,10 +260,6 @@ func (r runner) hasEmbeddedMockType(typ types.Type) bool {
 		for i := range typ.NumFields() {
 			f := typ.Field(i)
 			if !f.Embedded() {
-				continue
-			}
-
-			if !r.isMockObjName(f) {
 				continue
 			}
 
