@@ -32,60 +32,60 @@ func newMyMock_NoCleanup_Complicated(t testing.TB) (*MyMock, *MyMock) {
 	t.Cleanup(func() { m2.AssertExpectations(t) })
 
 	m3 := &MyMock{} // want "mocks must have an AssertExpectations registered in a defer or t.Cleanup"
-	m3.On("hey")
+	m3.Called()
 
 	return m2, m1
 }
 
 func Test_NoAssertion(t *testing.T) {
 	a := &MyMock{} // want "mocks must have an AssertExpectations registered in a defer or t.Cleanup"
-	a.On("Foo")
+	a.Called()
 }
 
 func Test_NoAssertion_AccessField(t *testing.T) {
 	a := &MyMock{} // want "mocks must have an AssertExpectations registered in a defer or t.Cleanup"
-	a.MyMockType.On("Foo")
+	a.MyMockType.Called()
 }
 
 func Test_DeferAssert(t *testing.T) {
 	a := &MyMock{}
 	defer a.AssertExpectations(t)
-	a.On("Foo")
+	a.Called()
 }
 
 func Test_DeferAssert_OnField(t *testing.T) {
 	a := &MyMock{}
 	defer a.MyMockType.AssertExpectations(t)
-	a.On("Foo")
+	a.Called()
 }
 
 func Test_DeferAssert_AfterOtherUsage(t *testing.T) {
 	a := &MyMock{} // want "mocks must have an AssertExpectations registered in a defer or t.Cleanup"
-	a.On("Foo")
+	a.Called()
 	defer a.AssertExpectations(t)
 }
 
 func Test_TCleanup(t *testing.T) {
 	a := &MyMock{}
 	t.Cleanup(func() { a.AssertExpectations(t) })
-	a.On("Foo")
+	a.Called()
 }
 
 func Test_TCleanup_OnField(t *testing.T) {
 	a := &MyMock{}
 	t.Cleanup(func() { a.MyMockType.AssertExpectations(t) })
-	a.On("Foo")
+	a.Called()
 }
 
 func Test_TCleanup_AfterOtherUsage(t *testing.T) {
 	a := &MyMock{} // want "mocks must have an AssertExpectations registered in a defer or t.Cleanup"
-	a.On("Foo")
+	a.Called()
 	t.Cleanup(func() { a.AssertExpectations(t) })
 }
 
 func Test_GetMockFromFunction(t *testing.T) {
 	a := newMyMock(t)
-	a.On("Foo")
+	a.Called()
 }
 
 func Test_NormalCallToAssertExpectations(t *testing.T) {
