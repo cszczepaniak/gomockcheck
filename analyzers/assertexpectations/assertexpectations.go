@@ -80,7 +80,6 @@ func (r runner) isMockObj(obj types.Object) bool {
 func (r runner) run(pass *analysis.Pass) (any, error) {
 	pssa := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA)
 	for _, f := range pssa.SrcFuncs {
-		setDebug(f.Name() == "Test_Defer_WithClosure")
 		for _, b := range f.Blocks {
 			if b == f.Recover {
 				continue
