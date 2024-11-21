@@ -18,3 +18,17 @@ func IsTestifySymbol(obj types.Object, name string) bool {
 func IsTestifyMock(obj types.Object) bool {
 	return IsTestifySymbol(obj, MockType)
 }
+
+type QualifiedType struct {
+	PkgPath string
+	Name    string
+}
+
+func IsOneOf(obj types.Object, typs ...QualifiedType) bool {
+	for _, t := range typs {
+		if obj.Pkg().Path() == t.PkgPath && obj.Name() == t.Name {
+			return true
+		}
+	}
+	return false
+}

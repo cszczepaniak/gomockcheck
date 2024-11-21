@@ -8,21 +8,17 @@ import (
 	"strings"
 
 	"github.com/cszczepaniak/gomockcheck/analyzers/internal/typeutils"
+	"github.com/cszczepaniak/gomockcheck/names"
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/buildssa"
 	"golang.org/x/tools/go/ssa"
 )
 
-type MockType struct {
-	Pkg  string
-	Name string
-}
-
-func New(typs ...MockType) *analysis.Analyzer {
+func New(typs ...names.QualifiedType) *analysis.Analyzer {
 	r := runner{
-		types: slices.Concat([]MockType{{
-			Pkg:  "github.com/stretchr/testify/mock",
-			Name: "Mock",
+		types: slices.Concat([]names.QualifiedType{{
+			PkgPath: "github.com/stretchr/testify/mock",
+			Name:    "Mock",
 		}}, typs),
 	}
 
@@ -50,17 +46,11 @@ func debugf(s string, args ...any) {
 }
 
 type runner struct {
-	types []MockType
+	types []names.QualifiedType
 }
 
 func (r runner) isMockObjName(obj types.Object) bool {
-	for _, typ := range r.types {
-		if obj.Name() == typ.Name {
-			return true
-		}
-	}
-
-	return false
+	return names.IsOneOf(obj, r.types...)
 }
 
 func (r runner) isMockObj(obj types.Object) bool {
@@ -69,7 +59,7 @@ func (r runner) isMockObj(obj types.Object) bool {
 	}
 
 	for _, typ := range r.types {
-		if obj.Pkg().Path() == typ.Pkg && obj.Name() == typ.Name {
+		if obj.Pkg().Path() == typ.PkgPath && obj.Name() == typ.Name {
 			return true
 		}
 	}
